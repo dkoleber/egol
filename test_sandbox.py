@@ -19,17 +19,17 @@ if __name__ == '__main__':
     m2 = np.argmax(m1)
     print(m2)
 
-    arr3 = np.asarray(test2)
-    d1 = np.delete(arr3,0,axis=1)
-    print(d1)
-
-    print('------')
-
-    arr4 = np.asarray(test3)
-    print(arr4)
-    d2 = np.delete(arr4,0,axis=3)
-    print(d2)
-    c1,c2 = np.unique(d2, return_counts=True)
-    c3 = dict(zip(c1,c2))
-    print(c3)
-    print(c1[c2.argmax()])
+    # arr3 = np.asarray(test2)
+    # d1 = np.delete(arr3,0,axis=1)
+    # print(d1)
+    #
+    # print('------')
+    #
+    # arr4 = np.asarray(test3)
+    # print(arr4)
+    # d2 = np.delete(arr4,0,axis=3)
+    # print(d2)
+    # c1,c2 = np.unique(d2, return_counts=True)
+    # c3 = dict(zip(c1,c2))
+    # print(c3)
+    # print(c1[c2.argmax()])

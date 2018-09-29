@@ -76,14 +76,16 @@ class Grid:
         return True
     def move_actor(self, x, y, actor_entry):#TODO: needs to be changed
         space = self.grid[x,y]
-        self.grid[x,y,Grid.next_space(space)] = actor_entry
+        next_space = Grid.next_space(space)
+        self.grid[x,y,next_space] = actor_entry
     def count_occurrences(grid : np.ndarray, class_id : int):
         delete_guid = np.delete(grid,0,axis=3)
         classes, counts = np.unique(delete_guid, return_counts=True)
         return dict(zip(classes,counts))[class_id]
-    def next_space(space : np.ndarray):
+    def next_space(space : np.ndarray):#TODO: optimize
         open_space = space == OPEN_SPACE_GUID
-        return np.argmax(np.argmin(open_space,axis=1))
+        open_space = np.delete(open_space,1,axis=1)
+        return np.argmax(open_space)
 
 class World:
     def __init__(self, width : int, height : int):
@@ -98,17 +100,17 @@ class World:
         from_grid = self.get_active_grid()
         onto_grid = self.get_inactive_grid()
         onto_grid.grid.fill(0)
-        for x in range(0,self.width):
-            for y in range(0,self.height):
-                for z in range(0,SPACES_PER_POSITION):
+        for x in range(self.width):
+            for y in range(self.height):
+                for z in range(SPACES_PER_POSITION):
                     pos = from_grid.grid[x,y,z]
-
                     if pos[GUID_POS] > 1:
                         actor = self.actors[pos[GUID_POS]]
                         move = actor.get_action(from_grid.mask_visual_field(x,y,actor.traits['visual_radius']),self.actors)
+                        (new_x,new_y) = (x,y)
                         if onto_grid.can_make_move(x,y,move):
                             (new_x, new_y) = Grid.new_position(x,y,move)
-                            onto_grid.move_actor(new_x,new_y,pos)
+                        onto_grid.move_actor(new_x,new_y,pos)
         self.move_to_1 = not self.move_to_1
     def get_active_grid(self):
         onto_grid = self.grid_1
@@ -161,7 +163,7 @@ if __name__ == '__main__':
     render.start()
 
 
-    for x in range(25):
+    for x in range(250):
         test_world.add_actor(np.random.randint(test_world.width),np.random.randint(test_world.height),RandomMover(0,1))
 
     while True:
