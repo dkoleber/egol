@@ -5,10 +5,14 @@ import time
 import threading
 import uuid
 
+GUID_POS = 0
+CLASS_ID_POS = 1
+
 CLASSES = []
 NUM_CLASSES = len(CLASSES) + 2 # + 2 because empty space and wall
-
-
+SPACES_PER_POSITION = 4
+OPEN_SPACE_CLASS = 0
+OPEN_SPACE_GUID = 0
 
 class Action(Enum):
     LEFT = 0,
@@ -24,26 +28,38 @@ class Actor:
     def get_normalized_traits(self) -> list:
         trait_sum = sum(self.traits.values())
         return [{k,int(x / trait_sum)} for (k,x) in self.traits] #intentionally cast into int, actor probably loses some total complexity due to this
-    def get_action(self, visual_field : np.ndarray) -> Action:
+    def get_action(self, visual_field : np.ndarray, actor_dict : dict) -> Action:
+        return Action.NONE
+    def get_move(delta_x : int, delta_y : int):
+        if delta_x > 0 and abs(delta_x) > abs(delta_y): return Action.RIGHT
+        if delta_x < 0 and abs(delta_x) > abs(delta_y): return Action.LEFT
+        if delta_y > 0 and abs(delta_x) < abs(delta_y): return Action.DOWN
+        if delta_y < 0 and abs(delta_x) < abs(delta_y): return Action.UP
         return Action.NONE
 
+
 class RandomMover(Actor):
-    def get_action(self, visual_field : np.ndarray):
+    def get_action(self, visual_field : np.ndarray, actor_dict : dict):
         switch = [Action.LEFT, Action.UP, Action.RIGHT, Action.DOWN, Action.NONE]
         return switch[np.random.randint(len(switch))]
+
+class GroupMover(Actor):
+    def get_action(self, visual_field : np.ndarray, actor_dict : dict):
+        x_desire = 0 #TODO: complete this
+
 
 class Grid:
     def __init__(self, width : int, height : int):
         self.width = width
         self.height = height
-        self.grid = np.ndarray((width,height),dtype=int)
+        self.grid = np.ndarray((width,height,SPACES_PER_POSITION,2),dtype=int)
         self.grid.fill(0)
     def mask_visual_field(self, x : int, y : int, radius):
         x_start = max(0,x-radius)
         x_end = min(x+radius,self.width)
         y_start = max(0,y-radius)
         y_end = min(y+radius,self.height)
-        return self.grid[x_start:x_end,y_start:y_end]
+        return self.grid[x_start:x_end,y_start:y_end,:,:]
     def new_position(x : int, y : int, move : Action) -> (int, int):
         new_x = x
         new_y = y
@@ -58,8 +74,16 @@ class Grid:
         if move == Action.LEFT and x == 0: return False
         if move == Action.RIGHT and x == self.width - 1: return False
         return True
-    def move_actor(self, x, y, guid):#TODO: needs to be changed
-        self.grid[x,y] = guid
+    def move_actor(self, x, y, actor_entry):#TODO: needs to be changed
+        space = self.grid[x,y]
+        self.grid[x,y,Grid.next_space(space)] = actor_entry
+    def count_occurrences(grid : np.ndarray, class_id : int):
+        delete_guid = np.delete(grid,0,axis=3)
+        classes, counts = np.unique(delete_guid, return_counts=True)
+        return dict(zip(classes,counts))[class_id]
+    def next_space(space : np.ndarray):
+        open_space = space == OPEN_SPACE_GUID
+        return np.argmax(np.argmin(open_space,axis=1))
 
 class World:
     def __init__(self, width : int, height : int):
@@ -69,26 +93,22 @@ class World:
         self.grid_2 = Grid(width,height)
         self.actors = {} #dict of GUID:Actor, 0 reserved for open space, 1 reserved for wall
         self.move_to_1 = False
-        self.populate_grid()
         self.guid_tracker = 100
-    def populate_grid(self):
-        if not self.move_to_1:
-            pass #populate a
-        else:
-            pass #populate b
     def world_step(self):
         from_grid = self.get_active_grid()
         onto_grid = self.get_inactive_grid()
         onto_grid.grid.fill(0)
         for x in range(0,self.width):
             for y in range(0,self.height):
-                guid = from_grid.grid[x,y]
-                if guid > 1:
-                    actor = self.actors[guid]
-                    move = actor.get_action(from_grid.mask_visual_field(x,y,actor.traits['visual_radius']))
-                    if onto_grid.can_make_move(x,y,move):
-                        (new_x, new_y) = Grid.new_position(x,y,move)
-                        onto_grid.move_actor(new_x,new_y,guid)
+                for z in range(0,SPACES_PER_POSITION):
+                    pos = from_grid.grid[x,y,z]
+
+                    if pos[GUID_POS] > 1:
+                        actor = self.actors[pos[GUID_POS]]
+                        move = actor.get_action(from_grid.mask_visual_field(x,y,actor.traits['visual_radius']),self.actors)
+                        if onto_grid.can_make_move(x,y,move):
+                            (new_x, new_y) = Grid.new_position(x,y,move)
+                            onto_grid.move_actor(new_x,new_y,pos)
         self.move_to_1 = not self.move_to_1
     def get_active_grid(self):
         onto_grid = self.grid_1
@@ -111,10 +131,10 @@ class World:
         out_grid = self.get_active_grid()
         for x in range(0,self.width):
             for y in range(0,self.height):
-                guid = out_grid.grid[x,y]
-                if guid > 1:
+                pos = out_grid.grid[x,y,0]
+                if pos[GUID_POS] > 1:
                     #actor = self.actors[guid]
-                    img[x, y] = (guid % 256,(guid + 85) % 256,(guid + 170) % 256) #np.random.randint(255,size=(3))
+                    img[x, y] = (pos[CLASS_ID_POS] % 256,(pos[CLASS_ID_POS] + 85) % 256,(pos[CLASS_ID_POS] + 170) % 256) #np.random.randint(255,size=(3))
 
         return img
     def next_guid(self):
