@@ -5,14 +5,26 @@ import time
 import threading
 import uuid
 
-GUID_POS = 0
-CLASS_ID_POS = 1
+### HYPER PARAMETERS
+SPACES_PER_POSITION = 4
+POPULATION_SIZE = 100
+RADIUS = 5
+WORLD_WIDTH = 100
+WORLD_HEIGHT = 100
+
 
 CLASSES = []
 NUM_CLASSES = len(CLASSES) + 2 # + 2 because empty space and wall
-SPACES_PER_POSITION = 4
+
+
 OPEN_SPACE_CLASS = 0
 OPEN_SPACE_GUID = 0
+WALL_GUID = 1
+WALL_CLASS = 1
+GUID_POS = 0
+CLASS_ID_POS = 1
+GROUPMOVER_CLASS_ID = 4
+BASIC_ACTOR_CLASS_ID = 2
 
 class Action(Enum):
     LEFT = 0,
@@ -22,21 +34,25 @@ class Action(Enum):
     NONE = 4
 
 class Actor:
-    def __init__(self, complexity : int, visual_radius : int):
-        self.complexity = complexity
+    def __init__(self, visual_radius : int, class_id : int = BASIC_ACTOR_CLASS_ID):
+        self.complexity = visual_radius
         self.traits = {'visual_radius' : visual_radius}
+        self.class_id = class_id
+        self.normalize_traits()
     def get_normalized_traits(self) -> list:
         trait_sum = sum(self.traits.values())
         return [{k,int(x / trait_sum)} for (k,x) in self.traits] #intentionally cast into int, actor probably loses some total complexity due to this
     def get_action(self, visual_field : np.ndarray, actor_dict : dict) -> Action:
         return Action.NONE
-    def get_move(delta_x : int, delta_y : int):
+    def get_move(delta_x, delta_y):
         if delta_x > 0 and abs(delta_x) > abs(delta_y): return Action.RIGHT
         if delta_x < 0 and abs(delta_x) > abs(delta_y): return Action.LEFT
         if delta_y > 0 and abs(delta_x) < abs(delta_y): return Action.DOWN
         if delta_y < 0 and abs(delta_x) < abs(delta_y): return Action.UP
         return Action.NONE
-
+    def normalize_traits(self):
+        scalar = int(float(self.complexity) / float(sum(self.traits.values())))
+        self.traits = {k:v*scalar for k,v in self.traits.items()}
 
 class RandomMover(Actor):
     def get_action(self, visual_field : np.ndarray, actor_dict : dict):
@@ -45,8 +61,26 @@ class RandomMover(Actor):
 
 class GroupMover(Actor):
     def get_action(self, visual_field : np.ndarray, actor_dict : dict):
-        x_desire = 0 #TODO: complete this
+        # print(np.shape(visual_field))
+        # print(np.shape(visual_field[:self.traits['visual_radius'],:]))
+        # print(np.shape(visual_field[self.traits['visual_radius'] + 1:,:]))
+        outer_rad = self.traits['visual_radius']
+        inner_rad = int(outer_rad / 2)
+        rad_diff =  outer_rad - inner_rad
+        area_ratio = float(outer_rad**2) / float(inner_rad**2)
+        x_desire = -Grid.count_occurrences(visual_field[:outer_rad,:], GROUPMOVER_CLASS_ID) + \
+                   Grid.count_occurrences(visual_field[outer_rad + 1:,:], GROUPMOVER_CLASS_ID)
+        x_dislike = -Grid.count_occurrences(visual_field[rad_diff:outer_rad, :], GROUPMOVER_CLASS_ID) + \
+                    Grid.count_occurrences(visual_field[outer_rad + 1:-rad_diff, :], GROUPMOVER_CLASS_ID)
+        y_desire = -Grid.count_occurrences(visual_field[:,:outer_rad], GROUPMOVER_CLASS_ID) + \
+                   Grid.count_occurrences(visual_field[:,outer_rad + 1:], GROUPMOVER_CLASS_ID)
+        y_dislike = -Grid.count_occurrences(visual_field[:, rad_diff:outer_rad], GROUPMOVER_CLASS_ID) + \
+                   Grid.count_occurrences(visual_field[:, outer_rad + 1:-rad_diff], GROUPMOVER_CLASS_ID)
 
+        x_desire = float(x_desire) - (float(x_dislike) * area_ratio)
+        y_desire = float(y_desire) - (float(y_dislike) * area_ratio)
+
+        return Actor.get_move(x_desire,y_desire)
 
 class Grid:
     def __init__(self, width : int, height : int):
@@ -59,7 +93,18 @@ class Grid:
         x_end = min(x+radius,self.width)
         y_start = max(0,y-radius)
         y_end = min(y+radius,self.height)
-        return self.grid[x_start:x_end,y_start:y_end,:,:]
+        y_start_diff = y_start - y + radius
+        y_end_diff = y_end - y + radius
+        x_start_diff = x_start - x + radius
+        x_end_diff = x_end - x + radius
+        # print(x,y)
+        # print('---')
+        # print(x_start,x_end,y_start,y_end)
+        # print('---')
+        # print(x_start_diff,x_end_diff,y_start_diff,y_end_diff)
+        base = np.zeros((radius*2+1,radius*2+1,SPACES_PER_POSITION,2),dtype=int)
+        base[x_start_diff:x_end_diff,y_start_diff:y_end_diff] = self.grid[x_start:x_end,y_start:y_end]
+        return base
     def new_position(x : int, y : int, move : Action) -> (int, int):
         new_x = x
         new_y = y
@@ -78,9 +123,11 @@ class Grid:
         space = self.grid[x,y]
         next_space = Grid.next_space(space)
         self.grid[x,y,next_space] = actor_entry
-    def count_occurrences(grid : np.ndarray, class_id : int):
+    def count_occurrences(grid : np.ndarray, class_id : int):#TODO: optimize
         delete_guid = np.delete(grid,0,axis=3)
         classes, counts = np.unique(delete_guid, return_counts=True)
+        if class_id not in classes:
+            return 0
         return dict(zip(classes,counts))[class_id]
     def next_space(space : np.ndarray):#TODO: optimize
         open_space = space == OPEN_SPACE_GUID
@@ -126,7 +173,8 @@ class World:
         guid = self.next_guid()
         self.actors[guid] = actor
         onto_grid = self.get_active_grid()
-        onto_grid.grid[x,y] = guid
+        space = Grid.next_space(onto_grid.grid[x,y])
+        onto_grid.grid[x,y,space] = (guid,actor.class_id)
     def convert_to_image(self):
         img = np.ndarray((self.width,self.height,3),np.uint8)
         img.fill(255)
@@ -136,7 +184,7 @@ class World:
                 pos = out_grid.grid[x,y,0]
                 if pos[GUID_POS] > 1:
                     #actor = self.actors[guid]
-                    img[x, y] = (pos[CLASS_ID_POS] % 256,(pos[CLASS_ID_POS] + 85) % 256,(pos[CLASS_ID_POS] + 170) % 256) #np.random.randint(255,size=(3))
+                    img[x, y] = (pos[GUID_POS] % 256,(pos[GUID_POS] + 85) % 256,(pos[GUID_POS] + 170) % 256) #np.random.randint(255,size=(3))
 
         return img
     def next_guid(self):
@@ -156,23 +204,24 @@ class Renderer(threading.Thread):
             cv2.waitKey(self.frame_time)
 
 if __name__ == '__main__':
-    tick_time = 1. / 60.
     frames_per_sec = 30
-    test_world = World(100,100)
+    test_world = World(WORLD_WIDTH,WORLD_HEIGHT)
     render = Renderer(test_world, frames_per_sec)
     render.start()
 
+    # text_background = np.zeros((200,200,3), np.uint8)
+    # cv2.putText()
 
-    for x in range(250):
-        test_world.add_actor(np.random.randint(test_world.width),np.random.randint(test_world.height),RandomMover(0,1))
+
+    for x in range(POPULATION_SIZE):
+        test_world.add_actor(np.random.randint(test_world.width), np.random.randint(test_world.height), GroupMover(RADIUS, class_id=GROUPMOVER_CLASS_ID))
 
     while True:
-        start = time.time()
+        # start = time.time()
         test_world.world_step()
-        duration = time.time() - start
-        time.sleep(max(0., tick_time - duration))
+        # duration = time.time() - start
+        # stop = time.time() - start
 
-        #print(time.time() - start)
 
 
 
