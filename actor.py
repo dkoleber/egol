@@ -124,11 +124,11 @@ class Grid:
         next_space = Grid.next_space(space)
         self.grid[x,y,next_space] = actor_entry
     def count_occurrences(grid : np.ndarray, class_id : int):#TODO: optimize
-        delete_guid = np.delete(grid,0,axis=3)
+        delete_guid = np.delete(grid,0,axis=3) #can remove this if there isn't overlap between guids and classes (ie, guids all start at 100)
         classes, counts = np.unique(delete_guid, return_counts=True)
         if class_id not in classes:
             return 0
-        return dict(zip(classes,counts))[class_id]
+        return counts[np.where(classes==class_id)] #optimization over dict(zip(classes,coutns))?
     def next_space(space : np.ndarray):#TODO: optimize
         open_space = space == OPEN_SPACE_GUID
         open_space = np.delete(open_space,1,axis=1)
