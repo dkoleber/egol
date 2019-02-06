@@ -219,6 +219,7 @@ if __name__ == '__main__':
     while True:
         # start = time.time()
         test_world.world_step()
+        time.sleep(100)
         # duration = time.time() - start
         # stop = time.time() - start
 
