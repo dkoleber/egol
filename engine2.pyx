@@ -1,8 +1,10 @@
 import numpy as np
 cimport numpy as np
 
-WIDTH = 20
-HEIGHT = 20
+import time
+
+WIDTH = 50
+HEIGHT = 50
 CATEGORIES = 3
 ENERGY_INDEX = 0
 OXYGEN_INDEX = 1
@@ -15,9 +17,9 @@ TYPE_EMPTY = 3
 
 ENERGY_DECAY = 1
 GROW_THRESHOLD = 10
-NUTRIENTS_FOR_ENERGY = 5
-OXYGEN_FOR_ENERGY = 5
-ENERGY_FROM_PHOTO = 5
+NUTRIENTS_FOR_ENERGY = 2
+OXYGEN_FOR_ENERGY = 2
+ENERGY_FROM_PHOTO = 50
 
 def get_type_string(type_int):
     if type_int == TYPE_PLANT:
@@ -59,6 +61,7 @@ class Grid:
                 self.grid[x, y, ENERGY_INDEX] = 50
 
     def step(self):
+        #start_time = time.time()
         values = np.zeros(self.grid.shape, dtype=np.int32)
         for x in range(WIDTH):
             for y in range(HEIGHT):
@@ -69,6 +72,7 @@ class Grid:
                 if type == TYPE_DIRT:
                     self.add_to_adjacents_if_plant(values, x,y, NUTRIENTS_INDEX,1)
                 elif type == TYPE_AIR:
+                    #print('air: ' + str(x) + '|' + str(y) + '|' + str(time.time()))
                     self.add_to_adjacents_if_plant(values, x, y, OXYGEN_INDEX, 1)
                 elif type == TYPE_PLANT: #PLANT
                     values[x, y, ENERGY_INDEX] -= ENERGY_DECAY
@@ -77,34 +81,37 @@ class Grid:
                         values[x,y,OXYGEN_INDEX] -= OXYGEN_FOR_ENERGY
                         values[x,y,ENERGY_INDEX] += ENERGY_FROM_PHOTO
                     else:
-                        self.add_to_adjacent_plants_if_less_random(values, x, y, OXYGEN_INDEX, oxygen)
-                        self.add_to_adjacent_plants_if_less_random(values, x, y, NUTRIENTS_INDEX, nutrients)
-                        values[x,y,OXYGEN_INDEX] -= oxygen
-                        values[x,y,NUTRIENTS_INDEX] -= nutrients
+                        if nutrients > 1:
+                            self.add_to_adjacent_plants_if_less_random(values, x, y, NUTRIENTS_INDEX, nutrients)
+                            values[x, y, NUTRIENTS_INDEX] -= nutrients
+                        if oxygen > 1:
+                            self.add_to_adjacent_plants_if_less_random(values, x, y, OXYGEN_INDEX, oxygen)
+                            values[x, y, OXYGEN_INDEX] -= oxygen
 
                     if energy > GROW_THRESHOLD + (8*2):
                         grown = self.add_to_adjacents(values, x, y, ENERGY_INDEX, 1)
-                        values[x, y, ENERGY_INDEX] -= grown * 2
+                        values[x, y, ENERGY_INDEX] -= grown
                     elif energy > GROW_THRESHOLD + (8):
                         grown = self.add_to_adjacents_if_plant(values, x, y, ENERGY_INDEX, 2)
-                        values[x,y,ENERGY_INDEX] -= grown
-
+                        values[x,y,ENERGY_INDEX] -= grown * 2
+        #print('1: ' + str(time.time() - start_time))
+        #start_time = time.time()
         self.grid = self.grid + values
         for x in range(WIDTH):
             for y in range(HEIGHT):
                 if self.types[x,y] == TYPE_PLANT and self.grid[x,y,ENERGY_INDEX] <= 0:
-                    self.types[x,y] = TYPE_EMPTY
+                    self.types[x,y] = TYPE_EMPTY #np.random.choice([TYPE_DIRT,TYPE_AIR],1)[0]
                     self.grid[x,y] = (0,0,0)
                 elif self.grid[x,y,ENERGY_INDEX] > GROW_THRESHOLD and self.types[x,y] != TYPE_PLANT:
                     self.types[x,y] = TYPE_PLANT
                     self.grid[x,y,NUTRIENTS_INDEX] = 0
                     self.grid[x,y,OXYGEN_INDEX] = 0
+        #print('2: ' + str(time.time() - start_time))
 
 
-    def convert_to_image(self):
-
-        img = np.ndarray((HEIGHT,WIDTH,3),np.uint8)
-        img.fill(255)
+    def convert_to_image(self, nutrient_scale, oxygen_scale, energy_scale):
+        #start_time = time.time()
+        img = np.zeros((HEIGHT,WIDTH,3),np.uint8)
         for x in range(WIDTH):
             for y in range(HEIGHT):
                 type = self.types[x,y]
@@ -116,11 +123,20 @@ class Grid:
                 elif type == TYPE_AIR:
                     img[y,x] = (255-97, 255-149, 255-204)
                 elif type == TYPE_PLANT:
-                    r = int(255/max(energy,1))
-                    b = int(200/max(energy,1))
-                    img[y,x] = (255-r, 255-130 , 255-b)
-                    #print(energy)
-
+                    # nutrients / oxygen gets up to around 15
+                    # energy gets up to around 40
+                    total_scale = float(nutrient_scale + oxygen_scale + energy_scale) / 100.
+                    adjusted_nutrients = (float(nutrient_scale) / 100.) * (float(nutrients) / 15.)
+                    adjusted_oxygen = (float(oxygen_scale) / 100.) * (float(oxygen) / 15.)
+                    adjusted_energy = (float(energy_scale) / 100.) * (float(energy) / 40.)
+                    total_value = min(((adjusted_nutrients + adjusted_oxygen + adjusted_energy) / max(total_scale,1.)), 1.)
+                    r = int(255. * total_value)
+                    g = 130 + int((255.-130.)* total_value)
+                    b = 25 + int((255.-25.) * total_value)
+                    img[y,x] = (r, g, b)
+                else:
+                    img[y,x] = (0,0,0)
+        #print(time.time() - start_time)
         return img
 
     def add_to_adjacents(self, grid, x, y, index, amount_per):

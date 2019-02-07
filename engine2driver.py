@@ -16,6 +16,10 @@ from engine2 import Grid
 #print(engine.do_something(1))
 
 start_pos = 0
+nutrient_scale = 0
+oxygen_scale = 0
+energy_scale = 0
+
 
 class Renderer(threading.Thread):
     def __init__(self,grid : Grid, frames_per_sec : int):
@@ -26,6 +30,8 @@ class Renderer(threading.Thread):
         self.x = -1
         self.y = -1
         self.steps = 0
+
+        self.step_max = 1
     def run(self):
         cv2.namedWindow('image', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('image', 500, 500)
@@ -38,12 +44,38 @@ class Renderer(threading.Thread):
             self.y = y
         cv2.setMouseCallback('image', mouseHandler)
 
+
+        def on_nutrient_change(x):
+            global nutrient_scale
+            nutrient_scale = x
+        def on_oxygen_change(x):
+            global oxygen_scale
+            oxygen_scale = x
+        def on_energy_change(x):
+            global energy_scale
+            energy_scale = x
+        def on_rate_change(x):
+            self.step_max = max(x,1)
+
+        cv2.createTrackbar('nutrients on plant','image',0,100,on_nutrient_change)
+        cv2.createTrackbar('oxygen on plant','image',0,100,on_oxygen_change)
+        cv2.createTrackbar('energy on plant','image',0,100,on_energy_change)
+        cv2.createTrackbar('steps max per second', 'image',1, 100,on_rate_change)
+
+
+
+        global nutrient_scale
+        global oxygen_scale
+        global energy_scale
+        global start_pos
+
         while True:
+
             duration = time.time()
-            image = self.grid.convert_to_image()
+            image = self.grid.convert_to_image(nutrient_scale, oxygen_scale, energy_scale)
             cv2.imshow('image', image)
 
-            global start_pos
+
             start_pos = 13
             def next_pos():
                 global start_pos
@@ -71,12 +103,14 @@ if __name__ == '__main__':
     test_world = Grid()
     render = Renderer(test_world, frames_per_sec)
     render.start()
-    stop_time = .2
     while True:
          start = time.time()
          test_world.step()
          duration = time.time() - start
          render.step_time = 1./duration
+
+         stop_time = 1. / float(render.step_max)
+
          time.sleep(max(0,stop_time-duration))
          render.steps += 1
 
