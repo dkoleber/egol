@@ -5,6 +5,22 @@ import time
 import threading
 import uuid
 
+'''
+--Game Rules--
+Movers like to move away from other movers within radius R but toward movers between R and 2R.
+Movers move up to 1 unit per turn
+
+'''
+
+
+
+
+
+
+
+
+
+
 ### HYPER PARAMETERS
 SPACES_PER_POSITION = 4
 POPULATION_SIZE = 100
@@ -219,7 +235,7 @@ if __name__ == '__main__':
     while True:
         # start = time.time()
         test_world.world_step()
-        time.sleep(100)
+        time.sleep(.005)
         # duration = time.time() - start
         # stop = time.time() - start
 

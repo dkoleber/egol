@@ -6,20 +6,13 @@ import time
 import cv2
 import numpy as np
 pyximport.install(language_level=3,setup_args={"include_dirs":np.get_include()})
-
-
-# if os.path.exists('engine.c'):
-#     os.remove('engine.c')
-# subprocess.call(['cython','-3','engine.pyx',])
-import engine2
-from engine2 import Grid
-#print(engine.do_something(1))
+import tree_engine as engine
+from tree_engine import Grid
 
 start_pos = 0
 nutrient_scale = 0
 oxygen_scale = 0
 energy_scale = 0
-
 
 class Renderer(threading.Thread):
     def __init__(self,grid : Grid, frames_per_sec : int):
@@ -62,19 +55,15 @@ class Renderer(threading.Thread):
         cv2.createTrackbar('energy on plant','image',0,100,on_energy_change)
         cv2.createTrackbar('steps max per second', 'image',1, 100,on_rate_change)
 
-
-
         global nutrient_scale
         global oxygen_scale
         global energy_scale
         global start_pos
 
         while True:
-
             duration = time.time()
             image = self.grid.convert_to_image(nutrient_scale, oxygen_scale, energy_scale)
             cv2.imshow('image', image)
-
 
             start_pos = 13
             def next_pos():
@@ -86,15 +75,14 @@ class Renderer(threading.Thread):
             cv2.putText(info_image, 'steps per second: ' + str(self.step_time)[:5], (00, start_pos), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
             cv2.putText(info_image, 'steps: ' + str(self.steps), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
             if self.x >= 0 and self.y >= 0:
-                cv2.putText(info_image, 'nutrients: ' + str(self.grid.grid[self.x,self.y,engine2.NUTRIENTS_INDEX]), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
-                cv2.putText(info_image, 'oxygen: ' + str(self.grid.grid[self.x,self.y,engine2.OXYGEN_INDEX]), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
-                cv2.putText(info_image, 'energy: ' + str(self.grid.grid[self.x,self.y,engine2.ENERGY_INDEX]), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
-                cv2.putText(info_image, 'type: ' + engine2.get_type_string(self.grid.types[self.x,self.y]), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
+                cv2.putText(info_image, 'nutrients: ' + str(self.grid.grid[self.x,self.y,engine.NUTRIENTS_INDEX]), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
+                cv2.putText(info_image, 'oxygen: ' + str(self.grid.grid[self.x,self.y,engine.OXYGEN_INDEX]), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
+                cv2.putText(info_image, 'energy: ' + str(self.grid.grid[self.x,self.y,engine.ENERGY_INDEX]), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
+                cv2.putText(info_image, 'type: ' + engine.get_type_string(self.grid.types[self.x,self.y]), (00, next_pos()), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), )
 
             cv2.imshow('info', info_image)
 
             duration = time.time() - duration
-
             cv2.waitKey(int(max(self.frame_time-duration,0)))
 
 

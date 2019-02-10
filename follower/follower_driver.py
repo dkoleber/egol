@@ -6,14 +6,12 @@ import time
 import cv2
 import numpy as np
 pyximport.install(language_level=3,setup_args={"include_dirs":np.get_include()})
-
-
 # if os.path.exists('engine.c'):
 #     os.remove('engine.c')
-# subprocess.call(['cython','-3','engine.pyx',])
-import engine
-from engine import World,Actor
-#print(engine.do_something(1))
+# subprocess.call(['cython','-3','follower_engine.pyx',])
+import follower_engine as engine
+from follower_engine import World,Actor
+
 
 
 class Renderer(threading.Thread):
