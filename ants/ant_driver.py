@@ -1,3 +1,4 @@
+import json
 import threading
 from pyximport import pyximport
 import time
@@ -5,7 +6,8 @@ import cv2
 import numpy as np
 import os.path
 import sys
-from PyQt5.QtWidgets import QMainWindow, QApplication, QAction, qApp, QLabel, QLineEdit, QFileDialog
+from PyQt5.QtWidgets import QMainWindow, QApplication, QAction, qApp, QLabel, QLineEdit, QFileDialog, QPushButton
+
 pyximport.install(language_level=3,setup_args={"include_dirs":np.get_include()})
 import ant_engine as engine
 from ant_engine import World
@@ -17,10 +19,15 @@ TODO
 -select world type
 -load/save
 -create your own colors/directions mode
-
+- pause button
 
 '''
 
+
+IMAGE_FILE_TYPE = '.bmp'
+DATA_FILE_TYPE = '.json'
+
+### Util methods
 def try_func(default = None):
     def ignore(function):
         def _ignore(*args, **kwargs):
@@ -33,7 +40,8 @@ def try_func(default = None):
 def int_parse(val, default):
     parse =  try_func(default)(int)
     return parse(val)
-
+def ends_with(string, ending):
+    return len(string) >= len(ending) and string[-len(ending):] == ending
 
 
 class Renderer(threading.Thread):
@@ -65,7 +73,7 @@ class ControlsWindow(QMainWindow):
 
         self.world_mode = 2
         self.frames_per_second = 30
-        self.steps_per_second = 5
+        self.steps_per_second = 500
 
 
         self.initialize_components()
@@ -78,7 +86,7 @@ class ControlsWindow(QMainWindow):
         new_world_action.triggered.connect(self.new_world_handler)
 
         load_world_action = QAction('Load World', self)
-        load_world_action.setShortcut('Ctrl+L')
+        load_world_action.setShortcut('Ctrl+D')
         load_world_action.setStatusTip('Load World')
         load_world_action.triggered.connect(self.load_world_handler)
 
@@ -90,6 +98,10 @@ class ControlsWindow(QMainWindow):
         steps_per_second_edit = QLineEdit(str(self.steps_per_second), self)
         steps_per_second_edit.textChanged.connect(self.sps_changed_handler)
         steps_per_second_edit.move(10,50)
+
+        pause_button = QPushButton('Pause', self)
+        pause_button.move(10,100)
+        pause_button.clicked.connect(self.pause_handler)
 
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu('&File')
@@ -103,41 +115,78 @@ class ControlsWindow(QMainWindow):
 
         self.new_world_handler()
 
+    def new_world_handler(self, world = None):
+        paused_before = False
 
-    def new_world_handler(self):
-        if hasattr(self, 'renderer'):
+        if hasattr(self, 'renderer'): #stop rendering since there's about to not be a world to render
             self.renderer.is_paused = True
-        self.world = World(50, 50, self.world_mode)
-        if hasattr(self, 'runner'):
+
+        if world == None: #make a new world
+            self.world = World(50, 50, self.world_mode)
+        else:
+            self.world = world
+
+        if hasattr(self, 'runner'): #stop the world runner if it exists
+            paused_before = self.runner.is_paused
             self.runner.is_running = False
-        self.runner = WorldRunner(self.world, self.steps_per_second)
-        if hasattr(self, 'renderer'):
+
+        self.runner = WorldRunner(self.world, self.steps_per_second) #create a new runner
+        self.runner.is_paused = paused_before
+
+        if hasattr(self, 'renderer'): #create a new renderer or set it to render a new world
             self.renderer.world = self.world
         else:
             self.renderer = Renderer(self.world,self.frames_per_second)
             self.renderer.start()
 
-        self.renderer.is_paused = False
-        self.runner.start()
+        self.renderer.is_paused = False #unpause rendering
+        self.runner.start() #start the new runner
 
-    def load_world_handler(selfs):
-        pass
-
-    def save_world_handler(self):
+    def load_world_handler(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
 
-        full_path, _ = QFileDialog.getOpenFileName(self, 'Select File to Load', '', 'All Files (*);;Python Files (*.py)', options=options)
+        full_path, _ = QFileDialog.getOpenFileName(self, 'Select File to Load', '', 'Saved Simulation Files (*' + IMAGE_FILE_TYPE + ')', options=options)
         if full_path:
-            name, directory = os.path.spilt(full_path)
+            directory, name = os.path.split(full_path)
+            if ends_with(name, IMAGE_FILE_TYPE):
+                data_name = name.replace(IMAGE_FILE_TYPE, DATA_FILE_TYPE)
+                data_path = os.path.join(directory, data_name)
+                if os.path.exists(data_path):
+                    world = World(50,50,0)
+                    with open(data_path) as fl:
+                        data = json.load(fl)
+                    world.set_config(data)
+                    img = cv2.imread(full_path,cv2.IMREAD_COLOR)
+                    world.set_grid(img)
+                    self.new_world_handler(world)
+
+    def save_world_handler(self):
+        if hasattr(self, 'world'):
+            options = QFileDialog.Options()
+            options |= QFileDialog.DontUseNativeDialog
+            full_path, _ = QFileDialog.getSaveFileName(self, 'Save File', '', 'Saved Simulation Files (*' + IMAGE_FILE_TYPE + ')', options=options)
+            if full_path:
+                directory, name = os.path.split(full_path)
+                if not ends_with(name, IMAGE_FILE_TYPE):
+                    name += IMAGE_FILE_TYPE
+                data_name = name.replace(IMAGE_FILE_TYPE,DATA_FILE_TYPE)
+                data_path = '/'.join([directory, data_name])
+                paused_before = self.runner.is_paused
+                self.runner.is_paused = True
+                data = self.world.get_config()
+                with open(data_path, 'w+') as fl:
+                    json.dump(data, fl, indent=4)
+                cv2.imwrite('/'.join([directory, name]), self.world.get_grid())
+                self.runner.is_paused = paused_before
 
     def sps_changed_handler(self,text):
         if hasattr(self, 'runner'):
             self.steps_per_second = int_parse(text, self.runner.max_steps_per_second)
             self.runner.max_steps_per_second = self.steps_per_second
 
-
-
+    def pause_handler(self):
+        self.runner.is_paused = not self.runner.is_paused
 
 class ControlsApp(threading.Thread):
     def __init__(self):
@@ -156,8 +205,11 @@ class WorldRunner(threading.Thread):
         self.max_steps_per_second = max_sps #minimum time for 1 world step (written by others, read by this)
         self.steps = 0
         self.is_running =  True
+        self.is_paused = False
     def run(self):
         while self.is_running:
+            if self.is_paused:
+                continue
             start = time.time()
             self.grid.step()
             self.steps += 1

@@ -4,42 +4,50 @@ import time
 
 RESIZE_BY = 25
 
-pixel_values = [(255,255,255),(255,0,0),(0,255,0),(0,0,255)]
-switches_to = [1,2,0]
-bearings = [-90,90,90]
+
 
 
 
 
 class World:
     def __init__(self, width, height, config = 2):
+        self.pixel_values = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+        self.switches_to = [1, 2, 0]
+        self.bearings = [-90, 90, 90]
+
         self.width = width
         self.height = height
         self.grid = np.zeros((width,height),np.uint8)
+
         self.ant_x = int(width/2)
         self.ant_y = int(height/2)
         self.bearing = 90.
-        self.stage = 0
+
         self.rendering = np.full((width,height,3),255, np.uint8)
-        load_config(config)
+
+        self.world_mode = config
+        self.load_config()
+
     def convert_to_image(self):
         return self.rendering
+
     def step(self):
         #start_time = time.time()
         self.resize_grid()
         current = self.grid[self.ant_x,self.ant_y]
-        self.bearing += bearings[current]
+        self.bearing += self.bearings[current]
         self.bearing %= 360
         [delta_x, delta_y] = np.around([np.cos(np.pi * self.bearing / 180.), np.sin(np.pi * self.bearing / 180.)])
         delta_x = int(delta_x)
         delta_y = int(delta_y)
         #print('stage: ' + str(self.stage) + ' | bearing: ' + str(self.bearing) + ' | delta: ' + str(delta_x) + ', ' + str(delta_y) + ' | next: ' + str(switches_to[self.stage]))
-        self.grid[self.ant_x, self.ant_y] = switches_to[current]
-        self.rendering[self.ant_x, self.ant_y] = pixel_values[switches_to[current]]
+        self.grid[self.ant_x, self.ant_y] = self.switches_to[current]
+        self.rendering[self.ant_x, self.ant_y] = self.pixel_values[self.switches_to[current]]
         self.ant_x += delta_x
         self.ant_y += delta_y
         self.rendering[self.ant_x, self.ant_y] = (0, 0, 0)
         #print('step: ' + str(time.time() - start_time))
+
     def resize_grid(self):
         needs_width_resize_start = self.ant_x == 0
         needs_width_resize_end = self.ant_x == self.width - 1
@@ -70,36 +78,83 @@ class World:
             self.ant_x += RESIZE_BY if needs_width_resize_start else 0
             self.ant_y += RESIZE_BY if needs_height_resize_start else 0
 
-def load_config(config):
-    switch = [config_default, config_waller, config_3, config_4, config_5]
-    switch[config]()
+    def load_config(self):
+        switch = [self.config_default, self.config_waller, self.config_3]
+        switch[self.world_mode]()
 
-def config_default():
-    global switches_to
-    global bearings
-    switches_to = [1,0]
-    bearings = [-90,90]
+    def config_default(self):
+        self.switches_to = [1,0]
+        self.bearings = [-90,90]
+        self.pixel_values = [(255, 255, 255), (255, 0, 0)]
 
-def config_waller():
-    global switches_to
-    global bearings
-    switches_to = [1,2,0]
-    bearings = [-90,90,90]
+    def config_waller(self):
+        self.switches_to = [1,2,0]
+        self.bearings = [-90,90,90]
+        self.pixel_values = [(255, 255, 255), (255, 0, 0), (0, 255, 0)]
 
-def config_3():
-    global switches_to
-    global bearings
-    switches_to = [1,2,3,0]
-    bearings = [-90,90,90,-90]
+    def config_3(self):
+        self.switches_to = [1,2,3,0]
+        self.bearings = [-90,90,90,-90]
+        self.pixel_values = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
 
-def config_4():
-    global switches_to
-    global bearings
+    def set_config(self, data):
+        if 'switches_to' in data \
+            and 'bearings' in data \
+            and 'pixel_values' in data \
+            and 'ant_x' in data \
+            and 'ant_y' in data \
+            and 'bearing' in data \
+            and 'world_mode' in data \
+            and len(data['switches_to']) == len(data['bearings']) \
+            and len(data['bearings']) == len(data['pixel_values']):
+            self.switches_to = data['switches_to']
+            self.bearings = data['bearings']
+            self.pixel_values = data['pixel_values']
+            self.ant_x = data['ant_x']
+            self.ant_y = data['ant_y']
+            self.bearing = data['bearing']
+            self.world_mode = data['world_mode']
+            self.load_config()
+        else:
+            self.config_default()
 
-def config_5():
-    global switches_to
-    global bearings
+    def get_config(self):
+        return {'switches_to' : self.switches_to,
+                'bearings' : self.bearings,
+                'pixel_values' : self.pixel_values,
+                'ant_x' : self.ant_x,
+                'ant_y' : self.ant_y,
+                'bearing' : self.bearing,
+                'world_mode' : self.world_mode}
 
+    def set_grid(self, img):
+        self.rendering = img
+        self.width = img.shape[0]
+        self.height = img.shape[1]
+        self.grid = np.zeros((self.width, self.height), np.uint8)
+        try:
+            for x in range(self.width):
+                for y in range(self.height):
+                    pixel = img[x, y]
+                    tile = 0
+                    found = False
+                    for z in range(len(self.pixel_values)):
+                        if same(self.pixel_values[z],pixel):
+                            tile = z
+                            found = True
+                    if not found:
+                        print('not found: ', pixel)
+                    self.grid[x,y] = tile
+        except Exception as e:
+            print(e)
+        self.rendering[self.ant_x, self.ant_y] = (0, 0, 0)
 
+    def get_grid(self):
+        img = np.zeros((self.width,self.height,3), np.uint8)
+        for x in range(img.shape[0]):
+            for y in range(img.shape[1]):
+                img[x,y] = self.pixel_values[self.grid[x,y]]
+        return img
 
-
+def same(pixel_1, pixel_2):
+    return pixel_1[0] == pixel_2[0] and pixel_1[1] == pixel_2[1] and pixel_1[2] == pixel_2[2]
