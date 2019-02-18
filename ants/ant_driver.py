@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import os.path
 import sys
-from PyQt5.QtWidgets import QMainWindow, QApplication, QAction, qApp, QLabel, QLineEdit, QFileDialog, QPushButton
+from PyQt5.QtWidgets import QMainWindow, QApplication, QAction, qApp, QLabel, QLineEdit, QFileDialog, QPushButton, QComboBox
 
 pyximport.install(language_level=3,setup_args={"include_dirs":np.get_include()})
 import ant_engine as engine
@@ -16,18 +16,17 @@ from ant_engine import World
 
 '''
 TODO
--select world type
--load/save
 -create your own colors/directions mode
-- pause button
-
+-multiple ants
+-edit colors of existing sim
+- add total steps counter to GUI / saves
 '''
 
 
 IMAGE_FILE_TYPE = '.bmp'
 DATA_FILE_TYPE = '.json'
 
-### Util methods
+### Utility Functions
 def try_func(default = None):
     def ignore(function):
         def _ignore(*args, **kwargs):
@@ -43,7 +42,6 @@ def int_parse(val, default):
 def ends_with(string, ending):
     return len(string) >= len(ending) and string[-len(ending):] == ending
 
-
 class Renderer(threading.Thread):
     def __init__(self,world : World, frames_per_sec : int):
         super(Renderer,self).__init__()
@@ -52,20 +50,24 @@ class Renderer(threading.Thread):
         self.is_paused = False
 
     def run(self):
-        cv2.namedWindow('image', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('image', 500, 500)
+        try:
+            cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+            cv2.resizeWindow('image', 500, 500)
 
-        def on_fps_change(x):
-            self.frame_time = int((1. / float(max(x,1))) * 1000)
+            def on_fps_change(x):
+                self.frame_time = int((1. / float(max(x,1))) * 1000)
 
-        cv2.createTrackbar('fps', 'image', 1, 60, on_fps_change)
+            cv2.createTrackbar('fps', 'image', 1, 60, on_fps_change)
 
-        while True:
-            if self.is_paused:
-                continue
-            start_time = time.time()
-            cv2.imshow('image', self.world.convert_to_image())
-            cv2.waitKey(self.frame_time)
+            while True:
+                if self.is_paused:
+                    continue
+                start_time = time.time()
+                cv2.imshow('image', self.world.convert_to_image())
+                cv2.waitKey(self.frame_time)
+        except Exception as e:
+            print('rendering failed')
+            print(e)
 
 class ControlsWindow(QMainWindow):
     def __init__(self):
@@ -74,7 +76,6 @@ class ControlsWindow(QMainWindow):
         self.world_mode = 2
         self.frames_per_second = 30
         self.steps_per_second = 500
-
 
         self.initialize_components()
 
@@ -103,44 +104,57 @@ class ControlsWindow(QMainWindow):
         pause_button.move(10,100)
         pause_button.clicked.connect(self.pause_handler)
 
+        self.modes_names = ['Default', 'Waller', 'Boxer', '4', '5']
+        mode_combo = QComboBox(self)
+        for mode in self.modes_names:
+            mode_combo.addItem(mode)
+        mode_combo.move(10,150)
+        mode_combo.activated.connect(self.mode_combo_handler)
+
+
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu('&File')
         file_menu.addAction(new_world_action)
         file_menu.addAction(load_world_action)
         file_menu.addAction(save_world_action)
 
-        self.setGeometry(300, 300, 250, 150)
+        self.setGeometry(500, 500, 250, 250)
         self.setWindowTitle('Controls')
         self.show()
 
         self.new_world_handler()
 
     def new_world_handler(self, world = None):
-        paused_before = False
+        try:
+            paused_before = False
 
-        if hasattr(self, 'renderer'): #stop rendering since there's about to not be a world to render
-            self.renderer.is_paused = True
+            if hasattr(self, 'renderer'): #stop rendering since there's about to not be a world to render
+                self.renderer.is_paused = True
 
-        if world == None: #make a new world
-            self.world = World(50, 50, self.world_mode)
-        else:
-            self.world = world
+            if world == None or not isinstance(world, World): #make a new world
+                self.world = World(50, 50, self.world_mode)
+            else:
+                self.world = world
 
-        if hasattr(self, 'runner'): #stop the world runner if it exists
-            paused_before = self.runner.is_paused
-            self.runner.is_running = False
+            if hasattr(self, 'runner'): #stop the world runner if it exists
+                paused_before = self.runner.is_paused
+                self.runner.is_running = False
 
-        self.runner = WorldRunner(self.world, self.steps_per_second) #create a new runner
-        self.runner.is_paused = paused_before
+            self.runner = WorldRunner(self.world, self.steps_per_second) #create a new runner
+            self.runner.is_paused = paused_before
 
-        if hasattr(self, 'renderer'): #create a new renderer or set it to render a new world
-            self.renderer.world = self.world
-        else:
-            self.renderer = Renderer(self.world,self.frames_per_second)
-            self.renderer.start()
+            if hasattr(self, 'renderer'): #create a new renderer or set it to render a new world
+                self.renderer.world = self.world
+            else:
+                self.renderer = Renderer(self.world,self.frames_per_second)
+                self.renderer.start()
 
-        self.renderer.is_paused = False #unpause rendering
-        self.runner.start() #start the new runner
+
+            self.renderer.is_paused = False #unpause rendering
+            self.runner.start() #start the new runner
+        except Exception as e:
+            print('failed to make new world')
+            print(e)
 
     def load_world_handler(self):
         options = QFileDialog.Options()
@@ -180,13 +194,23 @@ class ControlsWindow(QMainWindow):
                 cv2.imwrite('/'.join([directory, name]), self.world.get_grid())
                 self.runner.is_paused = paused_before
 
-    def sps_changed_handler(self,text):
+    def sps_changed_handler(self, text):
         if hasattr(self, 'runner'):
             self.steps_per_second = int_parse(text, self.runner.max_steps_per_second)
             self.runner.max_steps_per_second = self.steps_per_second
 
     def pause_handler(self):
         self.runner.is_paused = not self.runner.is_paused
+
+    def mode_combo_handler(self, text):
+        try:
+            new_mode = text
+            if self.world_mode != new_mode:
+                self.world_mode = new_mode
+                self.new_world_handler()
+        except Exception as e:
+            print(e)
+
 
 class ControlsApp(threading.Thread):
     def __init__(self):
@@ -207,33 +231,22 @@ class WorldRunner(threading.Thread):
         self.is_running =  True
         self.is_paused = False
     def run(self):
-        while self.is_running:
-            if self.is_paused:
-                continue
-            start = time.time()
-            self.grid.step()
-            self.steps += 1
-            duration = time.time() - start
-            self.steps_per_second = 1. / max(duration,0.001)
-            stop_time = 1. / float(max(self.max_steps_per_second, 1))
-            time.sleep(max(0, stop_time - duration))
-
+        try:
+            while self.is_running:
+                if self.is_paused:
+                    continue
+                start = time.time()
+                self.grid.step()
+                self.steps += 1
+                duration = time.time() - start
+                self.steps_per_second = 1. / max(duration,0.001)
+                stop_time = 1. / float(max(self.max_steps_per_second, 1))
+                time.sleep(max(0, stop_time - duration))
+        except Exception as e:
+            print('world stepping failed')
+            print(e)
 
 if __name__ == '__main__':
-    # frames_per_sec = 30
-    # test_world = World(50,50)
-    # render = Renderer(test_world, frames_per_sec)
-    # render.start()
     controls = ControlsApp()
     controls.start()
 
-
-    stop_time = .001
-
-
-
-
-
-
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()

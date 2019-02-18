@@ -4,11 +4,6 @@ import time
 
 RESIZE_BY = 25
 
-
-
-
-
-
 class World:
     def __init__(self, width, height, config = 2):
         self.pixel_values = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
@@ -79,7 +74,7 @@ class World:
             self.ant_y += RESIZE_BY if needs_height_resize_start else 0
 
     def load_config(self):
-        switch = [self.config_default, self.config_waller, self.config_3]
+        switch = [self.config_default, self.config_waller, self.config_3, self.config_4, self.config_5]
         switch[self.world_mode]()
 
     def config_default(self):
@@ -96,6 +91,16 @@ class World:
         self.switches_to = [1,2,3,0]
         self.bearings = [-90,90,90,-90]
         self.pixel_values = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+
+    def config_4(self):
+        self.switches_to = [1, 2, 3, 0]
+        self.bearings = [-45, 90, 45, -90]
+        self.pixel_values = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+
+    def config_5(self):
+        self.switches_to = [1, 2, 0]
+        self.bearings = [-45, 90, -90]
+        self.pixel_values = [(255, 255, 255), (255, 0, 0), (0, 255, 0)]
 
     def set_config(self, data):
         if 'switches_to' in data \
