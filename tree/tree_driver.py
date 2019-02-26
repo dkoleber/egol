@@ -8,6 +8,7 @@ import numpy as np
 pyximport.install(language_level=3,setup_args={"include_dirs":np.get_include()})
 import tree_engine as engine
 from tree_engine import Grid
+from tree_stats import *
 
 start_pos = 0
 nutrient_scale = 0
@@ -25,6 +26,8 @@ class Renderer(threading.Thread):
         self.steps = 0
 
         self.step_max = 1
+
+        self.running = True
     def run(self):
         cv2.namedWindow('image', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('image', 500, 500)
@@ -60,7 +63,7 @@ class Renderer(threading.Thread):
         global energy_scale
         global start_pos
 
-        while True:
+        while self.running:
             duration = time.time()
             image = self.grid.convert_to_image(nutrient_scale, oxygen_scale, energy_scale)
             cv2.imshow('image', image)
@@ -85,25 +88,76 @@ class Renderer(threading.Thread):
             duration = time.time() - duration
             cv2.waitKey(int(max(self.frame_time-duration,0)))
 
+    def stop(self):
+        self.running = False
 
+RUN_BATCH = False
 if __name__ == '__main__':
-    frames_per_sec = 30
-    test_world = Grid()
-    render = Renderer(test_world, frames_per_sec)
-    render.start()
-    while True:
-         start = time.time()
-         test_world.step()
-         duration = time.time() - start
-         render.step_time = 1./duration
+    if not RUN_BATCH:
+        frames_per_sec = 30
+        test_world = Grid()
+        render = Renderer(test_world, frames_per_sec)
+        render.start()
+        sim_name = 'tree_' + str(time.time())
+        stats_manager = TreeStats(sim_name, test_world.get_config())
+        print(sim_name)
 
-         stop_time = 1. / float(render.step_max)
+        cont = True
 
-         time.sleep(max(0,stop_time-duration))
-         render.steps += 1
+        while cont:
 
+            start = time.time()
+            cont = test_world.step()
+            duration = time.time() - start
+            render.step_time = 1./duration
 
+            stop_time = 1. / float(render.step_max)
 
+            time.sleep(max(0,stop_time-duration))
 
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+            if render.steps % 10 == 0:
+                stats = test_world.get_stats()
+                stats_manager.add_entry(render.steps, stats)
+            render.steps += 1
+
+        cv2.destroyAllWindows()
+        render.stop()
+        stats_manager.show_stats()
+
+    else:
+        def run_sim(config):
+            test_world = Grid(config)
+            sim_name = 'tree_' + str(time.time())
+            stats_manager = TreeStats(sim_name, test_world.get_config())
+            print(sim_name)
+            cont = True
+            steps = 0
+            while cont:
+                cont = test_world.step()
+                if steps % 10 == 0:
+                    stats = test_world.get_stats()
+                    stats_manager.add_entry(steps, stats)
+                steps += 1
+
+        def update_config(config, property, value):
+            config[property] = value
+            return config
+
+        base_world = Grid()
+        base_config = base_world.default_config()
+
+        SAMPLES = 1
+
+        energy_decay = np.random.random_integers(1,5,SAMPLES)
+        grow_threshold = np.random.random_integers(5,20,SAMPLES)
+        x_for_energy = np.random.random_integers(1,5,SAMPLES)
+        energy_from_photo = np.random.random_integers(10,80,SAMPLES)
+
+        for x in range(SAMPLES):
+            run_sim(update_config(base_world.default_config(),'energy_decay',energy_decay[x]))
+            run_sim(update_config(base_world.default_config(),'grow_threshold',grow_threshold[x]))
+            run_sim(update_config(base_world.default_config(),'energy_from_photo',energy_from_photo[x]))
+            new_config = base_world.default_config()
+            new_config['nutrients_for_energy'] = x_for_energy[x]
+            new_config['oxygen_for_energy'] = x_for_energy[x]
+            run_sim(new_config)

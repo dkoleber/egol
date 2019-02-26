@@ -3,8 +3,6 @@ cimport numpy as np
 
 import time
 
-WIDTH = 50
-HEIGHT = 50
 CATEGORIES = 3
 ENERGY_INDEX = 0
 OXYGEN_INDEX = 1
@@ -15,11 +13,7 @@ TYPE_AIR = 1
 TYPE_PLANT = 2
 TYPE_EMPTY = 3
 
-ENERGY_DECAY = 1
-GROW_THRESHOLD = 10
-NUTRIENTS_FOR_ENERGY = 2
-OXYGEN_FOR_ENERGY = 2
-ENERGY_FROM_PHOTO = 50
+
 
 def get_type_string(type_int):
     if type_int == TYPE_PLANT:
@@ -35,36 +29,55 @@ def get_type_string(type_int):
 
 air and dirt give oxygen and nutrients to all plants nearby
 
-spaces that are not plant that accumulate energy >= GROW_THRESHOLD become plants. Their nutrients and oxygen levels are set to 0
+spaces that are not plant that accumulate energy >= self.config['grow_threshold'] become plants. Their nutrients and oxygen levels are set to 0
 
-plants with energy > GROW_THRESHOLD + 8*2 can give 2 energy to all surrounding spaces. 
+plants with energy > self.config['grow_threshold'] + 8*2 can give 2 energy to all surrounding spaces. 
 plants with no energy die and turn into empty
-plants with both OXYGEN_FOR_ENERGY oxygen and NUTRIENTS_FOR_ENERGY nutrients can remove both to produce ENERGY_FROM_PHOTO energy
-plants lose ENERGY_DECAY per turn
+plants with both self.config['oxygen_for_energy'] oxygen and self.config['nutrients_for_energy'] nutrients can remove both to produce self.config['energy_from_photo'] energy
+plants lose self.config['energy_decay'] per turn
 
 '''
 
 class Grid:
-    def __init__(self):
-        self.grid = np.zeros((WIDTH,HEIGHT,CATEGORIES),dtype=np.int32)
-        self.types = np.ndarray((WIDTH,HEIGHT),dtype=np.int8)
+    def __init__(self, config = None):
+        self.config = config
+        if config == None:
+            self.config = self.default_config()
+
+
+        self.grid = np.zeros((self.config['width'],self.config['height'],CATEGORIES),dtype=np.int32)
+        self.types = np.ndarray((self.config['width'],self.config['height']),dtype=np.int8)
         self.types.fill(TYPE_EMPTY)
-        for x in range(WIDTH):
-            for y in range(int(HEIGHT/2)):
+        for x in range(self.config['width']):
+            for y in range(int(self.config['height']/2)):
                 self.types[x,y] = TYPE_AIR
-        for x in range(WIDTH):
-            for y in range(int(HEIGHT/2),HEIGHT):
+        for x in range(self.config['width']):
+            for y in range(int(self.config['height']/2),self.config['height']):
                 self.types[x,y] = TYPE_DIRT
-        for x in range(int(WIDTH/5),int(WIDTH*(4/5))):
-            for y in range(int(HEIGHT / 2)-1, int(HEIGHT / 2)+1):
+        for x in range(int(self.config['width']/5),int(self.config['width']*(4/5))):
+            for y in range(int(self.config['height'] / 2)-1, int(self.config['height'] / 2)+1):
                 self.types[x,y] = TYPE_PLANT
                 self.grid[x, y, ENERGY_INDEX] = 50
+
+    def default_config(self):
+        return {
+            'width': 50,
+            'height': 50,
+            'energy_decay': 1,
+            'grow_threshold': 10,
+            'nutrients_for_energy': 2,
+            'oxygen_for_energy': 2,
+            'energy_from_photo': 50
+        }
+        
 
     def step(self):
         #start_time = time.time()
         values = np.zeros(self.grid.shape, dtype=np.int32)
-        for x in range(WIDTH):
-            for y in range(HEIGHT):
+        has_plant = False
+        for x in range(self.config['width']):
+            for y in range(self.config['height']):
+
                 type = self.types[x,y]
                 nutrients = self.grid[x,y,NUTRIENTS_INDEX]
                 oxygen = self.grid[x,y,OXYGEN_INDEX]
@@ -75,11 +88,12 @@ class Grid:
                     #print('air: ' + str(x) + '|' + str(y) + '|' + str(time.time()))
                     self.add_to_adjacents_if_plant(values, x, y, OXYGEN_INDEX, 1)
                 elif type == TYPE_PLANT: #PLANT
-                    values[x, y, ENERGY_INDEX] -= ENERGY_DECAY
-                    if nutrients > NUTRIENTS_FOR_ENERGY and oxygen > OXYGEN_FOR_ENERGY:
-                        values[x,y,NUTRIENTS_INDEX] -= NUTRIENTS_FOR_ENERGY
-                        values[x,y,OXYGEN_INDEX] -= OXYGEN_FOR_ENERGY
-                        values[x,y,ENERGY_INDEX] += ENERGY_FROM_PHOTO
+                    has_plant = True
+                    values[x, y, ENERGY_INDEX] -= self.config['energy_decay']
+                    if nutrients > self.config['nutrients_for_energy'] and oxygen > self.config['oxygen_for_energy']:
+                        values[x,y,NUTRIENTS_INDEX] -= self.config['nutrients_for_energy']
+                        values[x,y,OXYGEN_INDEX] -= self.config['oxygen_for_energy']
+                        values[x,y,ENERGY_INDEX] += self.config['energy_from_photo']
                     else:
                         if nutrients > 1:
                             self.add_to_adjacent_plants_if_less_random(values, x, y, NUTRIENTS_INDEX, nutrients)
@@ -88,32 +102,32 @@ class Grid:
                             self.add_to_adjacent_plants_if_less_random(values, x, y, OXYGEN_INDEX, oxygen)
                             values[x, y, OXYGEN_INDEX] -= oxygen
 
-                    if energy > GROW_THRESHOLD + (8*2):
+                    if energy > self.config['grow_threshold'] + (8*2):
                         grown = self.add_to_adjacents(values, x, y, ENERGY_INDEX, 1)
                         values[x, y, ENERGY_INDEX] -= grown
-                    elif energy > GROW_THRESHOLD + (8):
+                    elif energy > self.config['grow_threshold'] + (8):
                         grown = self.add_to_adjacents_if_plant(values, x, y, ENERGY_INDEX, 2)
                         values[x,y,ENERGY_INDEX] -= grown * 2
         #print('1: ' + str(time.time() - start_time))
         #start_time = time.time()
         self.grid = self.grid + values
-        for x in range(WIDTH):
-            for y in range(HEIGHT):
+        for x in range(self.config['width']):
+            for y in range(self.config['height']):
                 if self.types[x,y] == TYPE_PLANT and self.grid[x,y,ENERGY_INDEX] <= 0:
                     self.types[x,y] = TYPE_EMPTY #np.random.choice([TYPE_DIRT,TYPE_AIR],1)[0]
                     self.grid[x,y] = (0,0,0)
-                elif self.grid[x,y,ENERGY_INDEX] > GROW_THRESHOLD and self.types[x,y] != TYPE_PLANT:
+                elif self.grid[x,y,ENERGY_INDEX] > self.config['grow_threshold'] and self.types[x,y] != TYPE_PLANT:
                     self.types[x,y] = TYPE_PLANT
                     self.grid[x,y,NUTRIENTS_INDEX] = 0
                     self.grid[x,y,OXYGEN_INDEX] = 0
+        return has_plant
         #print('2: ' + str(time.time() - start_time))
-
 
     def convert_to_image(self, nutrient_scale, oxygen_scale, energy_scale):
         #start_time = time.time()
-        img = np.zeros((HEIGHT,WIDTH,3),np.uint8)
-        for x in range(WIDTH):
-            for y in range(HEIGHT):
+        img = np.zeros((self.config['height'],self.config['width'],3),np.uint8)
+        for x in range(self.config['width']):
+            for y in range(self.config['height']):
                 type = self.types[x,y]
                 nutrients = self.grid[x, y, NUTRIENTS_INDEX]
                 oxygen = self.grid[x, y, OXYGEN_INDEX]
@@ -141,23 +155,25 @@ class Grid:
 
     def add_to_adjacents(self, grid, x, y, index, amount_per):
         count = 0
-        for x1 in range(max(0, x - 1), min(WIDTH, x + 2)):
-            for y1 in range(max(0, y - 1), min(HEIGHT, y + 2)):
+        for x1 in range(max(0, x - 1), min(self.config['width'], x + 2)):
+            for y1 in range(max(0, y - 1), min(self.config['height'], y + 2)):
                 grid[x1,y1,index] += amount_per
                 count += 1
         return count
+
     def add_to_adjacents_if_plant(self, grid, x, y, index, amount_per):
         count = 0
-        for x1 in range(max(0, x - 1), min(WIDTH, x + 2)):
-            for y1 in range(max(0, y - 1), min(HEIGHT, y + 2)):
+        for x1 in range(max(0, x - 1), min(self.config['width'], x + 2)):
+            for y1 in range(max(0, y - 1), min(self.config['height'], y + 2)):
                 if self.types[x1,y1] == TYPE_PLANT:
                     grid[x1,y1,index] += amount_per
                     count += 1
         return count
+
     def add_to_adjacent_plants_if_less_random(self, grid, x, y, index, amount_total):
         list_of_lower = []
-        for x1 in range(max(0, x - 1), min(WIDTH, x + 2)):
-            for y1 in range(max(0, y - 1), min(HEIGHT, y + 2)):
+        for x1 in range(max(0, x - 1), min(self.config['width'], x + 2)):
+            for y1 in range(max(0, y - 1), min(self.config['height'], y + 2)):
                 if self.types[x1, y1] == TYPE_PLANT and self.grid[x,y,index] > self.grid[x1,y1,index]:
                     list_of_lower.append([x1,y1])
         amount_per = 0
@@ -174,4 +190,43 @@ class Grid:
             grid[coord[0],coord[1],index] += amount_distributed
             amount_remaining -= amount_distributed
 
+    def get_stats(self):
+        AVERAGE_INDEX = 0
+        MAX_INDEX = 1
+        TOTAL_INDEX = 2
+        stats = {'energy':[0.,0.,0.], #arranged as average, max, total
+                 'nutrients':[0.,0.,0.],
+                 'oxygen':[0.,0.,0.],
+                 'total_plants':0
+        }
+        for x in range(self.config['width']):
+            for y in range(self.config['height']):
+                if self.types[x,y] == TYPE_PLANT:
+                    stats['total_plants'] += 1
+                    nutrients = self.grid[x, y, NUTRIENTS_INDEX]
+                    oxygen = self.grid[x, y, OXYGEN_INDEX]
+                    energy = self.grid[x, y, ENERGY_INDEX]
+                    stats['energy'][AVERAGE_INDEX] += energy
+                    stats['energy'][TOTAL_INDEX] += energy
+                    if stats['energy'][MAX_INDEX] < energy:
+                        stats['energy'][MAX_INDEX] = energy
+
+                    stats['nutrients'][AVERAGE_INDEX] += nutrients
+                    stats['nutrients'][TOTAL_INDEX] += nutrients
+                    if stats['nutrients'][MAX_INDEX] < nutrients:
+                        stats['nutrients'][MAX_INDEX] = nutrients
+
+                    stats['oxygen'][AVERAGE_INDEX] += oxygen
+                    stats['oxygen'][TOTAL_INDEX] += oxygen
+                    if stats['oxygen'][MAX_INDEX] < oxygen:
+                        stats['oxygen'][MAX_INDEX] = oxygen
+
+        stats['energy'][AVERAGE_INDEX] = float(stats['energy'][AVERAGE_INDEX]) / max(float(stats['total_plants']), 1.)
+        stats['nutrients'][AVERAGE_INDEX] = float(stats['nutrients'][AVERAGE_INDEX]) / max(float(stats['total_plants']), 1.)
+        stats['oxygen'][AVERAGE_INDEX] = float(stats['oxygen'][AVERAGE_INDEX]) / max(float(stats['total_plants']), 1.)
+
+        return stats
+
+    def get_config(self):
+        return self.config
 
