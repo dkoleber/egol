@@ -49,7 +49,11 @@ GROW_THRESHOLD, OXYGEN_FOR_ENERGY, NUTRIENTS_FOR_ENERGY, ENERGY_FROM_PHOTO, and 
 ![single sim stats](res/tree_2.png)
 Example of Single Simulation Resource Stats
 
-<img src="res/tree_3.1.png" alt="multi sim stats 1" width="200"/>
+![multi simulation coorelations](res/tree_3.1.png)
+![multi simulation coorelations](res/tree_3.2.png)
+![multi simulation coorelations](res/tree_3.3.png)
+![multi simulation coorelations](res/tree_3.4.png)
+![multi simulation coorelations](res/tree_3.5.png)
 Example of Multiple Simulation Config/Simulation Stat Coorelation
 
 ### Ants
