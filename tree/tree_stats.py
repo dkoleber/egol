@@ -7,6 +7,16 @@ DATABASE_NAME = 'tree_stats.db'
 SIMS_TABLE_NAME = 'sims_table'
 STATS_TABLE_NAME = 'stats_table'
 
+
+def get_list_from_dict(list, key):
+    return [x[key] for x in list]
+def get_max_from_dict_list(list, key):
+    return max(get_list_from_dict(list,key))
+def get_min_from_dict_list(list, key):
+    return max(get_list_from_dict(list,key))
+
+
+
 class TreeStats:
     '''
     sim_name is None when you're looking to do analytics on multiple sims
@@ -18,7 +28,7 @@ class TreeStats:
         c = self.c
         self.pk = sim_name
 
-        if sim_name == None:
+        if sim_name != None:
             c.execute("SELECT name FROM %s WHERE name='%s'" % (SIMS_TABLE_NAME, self.pk))
             if len(c.fetchall()) == 0 and config != None:
                 c.execute("INSERT INTO %s VALUES ('%s', %d, %d, %d, %d, %d, %d, %d)" % (
@@ -81,7 +91,6 @@ class TreeStats:
         rows = 3
         cols = 3
         pos = 1
-
 
         scr = plt.figure()
         energy = scr.add_subplot(rows, cols, pos)
@@ -160,12 +169,50 @@ class TreeStats:
         return res
     def multi_stat(self):
         self.c.execute("SELECT name FROM %s" % (SIMS_TABLE_NAME))
-        all_sims = list(self.c.fetchall())
+        all_sims = [x[0] for x in list(self.c.fetchall())]
         items = {name:{'config': self.load_config(name),'stats':self.load_stats(name)} for name in all_sims}
+        for name,sim in items.items():
+            items[name]['maxes'] = {'length':len(sim['stats']),
+                                    'energy_average':get_max_from_dict_list(sim['stats'],'energy_average'),
+                                    'energy_max':get_max_from_dict_list(sim['stats'],'energy_max'),
+                                    'energy_total':get_max_from_dict_list(sim['stats'],'energy_total'),
+                                    'nutrients_average':get_max_from_dict_list(sim['stats'],'nutrients_average'),
+                                    'nutrients_max':get_max_from_dict_list(sim['stats'],'nutrients_max'),
+                                    'nutrients_total':get_max_from_dict_list(sim['stats'],'nutrients_total'),
+                                    'oxygen_average':get_max_from_dict_list(sim['stats'],'oxygen_average'),
+                                    'oxygen_max':get_max_from_dict_list(sim['stats'],'oxygen_max'),
+                                    'oxygen_total':get_max_from_dict_list(sim['stats'],'oxygen_total'),
+                                    'total_plants':get_max_from_dict_list(sim['stats'],'total_plants')}
+        for name, sim in items.items():
+            items[name]['config'].pop('width')
+            items[name]['config'].pop('height')
 
+        def get_entry(name, config_key, stats_key):
+            return [items[name]['config'][config_key], items[name]['maxes'][stats_key]]
 
+        config_keys = items[list(items.keys())[0]]['config'].keys()
+        stat_keys = items[list(items.keys())[0]]['maxes'].keys()
 
+        rows = 1
+        cols = 1
+        pos = 1
 
+        for config in config_keys:
+            scr = plt.figure()
+            stat_vals = []
+            stat_names = []
+            for stat in stat_keys:
+                entries = np.array([get_entry(name, config, stat) for name in items.keys()]).T
+                stat_names.append(stat)
+                stat_vals.append(np.corrcoef(entries)[0][1])
+
+            config_plt = scr.add_subplot(rows, cols, pos)
+            config_plt.set_title("%s Correlations for Maximum Values of Each Variable" % config)
+            indexes = np.arange(len(stat_vals),dtype=np.int8)
+            config_plt.bar(indexes, stat_vals)
+            config_plt.set_xticks(indexes)
+            config_plt.set_xticklabels(stat_names)
+            plt.show()
 
 if __name__ == '__main__':
     #'tree_1551211346.1682978'
@@ -174,3 +221,4 @@ if __name__ == '__main__':
     #'tree_1551211467.8221138'
     stats_manager = TreeStats('tree_1551211388.966037')
     stats_manager.show_stats()
+    #stats_manager.multi_stat()

@@ -99,7 +99,7 @@ if __name__ == '__main__':
         render = Renderer(test_world, frames_per_sec)
         render.start()
         sim_name = 'tree_' + str(time.time())
-        stats_manager = TreeStats(sim_name, test_world.get_config())
+        #stats_manager = TreeStats(sim_name, test_world.get_config())
         print(sim_name)
 
         cont = True
@@ -117,13 +117,12 @@ if __name__ == '__main__':
 
             if render.steps % 10 == 0:
                 stats = test_world.get_stats()
-                stats_manager.add_entry(render.steps, stats)
+                #stats_manager.add_entry(render.steps, stats)
             render.steps += 1
 
         cv2.destroyAllWindows()
         render.stop()
         stats_manager.show_stats()
-
     else:
         def run_sim(config):
             test_world = Grid(config)
